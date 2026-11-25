@@ -1,10 +1,12 @@
+import { Suspense } from "react"
+
 import { NavActions } from "@/components/nav-actions"
+import { NavChats, NavChatsSkeleton } from "@/components/nav-chats"
 import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
   SidebarHeader,
 } from "@/components/ui/sidebar"
 
@@ -15,7 +17,9 @@ export function AppSidebar() {
         <NavActions />
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup />
+        <Suspense fallback={<NavChatsSkeleton />}>
+          <NavChats />
+        </Suspense>
       </SidebarContent>
       <SidebarFooter>
         <NavUser />
