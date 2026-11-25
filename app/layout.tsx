@@ -3,7 +3,6 @@ import { shadcn } from "@clerk/ui/themes"
 import { Geist, Geist_Mono } from "next/font/google"
 
 import "./globals.css"
-import { AuthControls } from "@/components/auth-controls"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toast"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -33,12 +32,9 @@ export default function RootLayout({
       )}
     >
       <body>
-        <ClerkProvider appearance={{ theme: shadcn }}>
+        <ClerkProvider appearance={{ theme: shadcn, cssLayerName: "clerk" }}>
           <ThemeProvider>
             <TooltipProvider>
-              <header className="flex h-14 items-center justify-end gap-2 border-b px-4">
-                <AuthControls />
-              </header>
               {children}
               <Toaster />
             </TooltipProvider>
