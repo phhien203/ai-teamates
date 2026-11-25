@@ -8,8 +8,8 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSkeleton,
 } from "@/components/ui/sidebar"
+import { Skeleton } from "@/components/ui/skeleton"
 import { getChatsWithBot } from "@/queries/bots"
 
 export async function NavChats() {
@@ -23,6 +23,7 @@ export async function NavChats() {
             <SidebarMenuItem key={chat.id}>
               <SidebarMenuButton
                 size="lg"
+                tooltip={chat.name ?? chat.bot.name}
                 render={<Link href={`/chats/${chat.id}`} />}
               >
                 <ChatAvatar seed={chat.bot.avatar} />
@@ -60,7 +61,10 @@ export function NavChatsSkeleton() {
         <SidebarMenu>
           {Array.from({ length: 3 }, (_, i) => (
             <SidebarMenuItem key={i}>
-              <SidebarMenuSkeleton showIcon />
+              <div className="flex h-12 items-center gap-2 p-2 group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:p-0">
+                <Skeleton className="size-8 shrink-0 rounded-full" />
+                <Skeleton className="h-4 flex-1 group-data-[collapsible=icon]:hidden" />
+              </div>
             </SidebarMenuItem>
           ))}
         </SidebarMenu>

@@ -16,6 +16,11 @@ import {
   CommandList,
 } from "@/components/ui/command"
 import { Kbd, KbdGroup } from "@/components/ui/kbd"
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar"
 import type { ChatWithBot } from "@/queries/bots"
 
 type NavSearchProps = {
@@ -42,7 +47,7 @@ export function NavSearch({ chatsPromise }: NavSearchProps) {
       <Button
         variant="outline"
         onClick={() => setOpen(true)}
-        className="h-8 w-full justify-start rounded-lg border-input bg-transparent px-2.5 font-normal text-muted-foreground dark:bg-input/30"
+        className="h-8 w-full justify-start rounded-lg border-input bg-transparent px-2.5 font-normal text-muted-foreground group-data-[collapsible=icon]:hidden dark:bg-input/30"
       >
         <SearchIcon data-icon="inline-start" />
         Search
@@ -51,6 +56,14 @@ export function NavSearch({ chatsPromise }: NavSearchProps) {
           <Kbd>K</Kbd>
         </KbdGroup>
       </Button>
+      <SidebarMenu className="hidden group-data-[collapsible=icon]:flex">
+        <SidebarMenuItem>
+          <SidebarMenuButton tooltip="Search" onClick={() => setOpen(true)}>
+            <SearchIcon />
+            <span>Search</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
       <CommandDialog
         open={open}
         onOpenChange={setOpen}

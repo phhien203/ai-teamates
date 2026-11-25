@@ -25,7 +25,7 @@ export function NavUser() {
               userButtonBox: "w-full flex-row-reverse justify-end gap-2",
               userButtonAvatarBox: "size-8 rounded-lg",
               userButtonOuterIdentifier:
-                "truncate ps-0 text-sm font-medium text-inherit",
+                "truncate ps-0 text-sm font-medium text-inherit group-data-[collapsible=icon]:hidden",
             },
           }}
         />

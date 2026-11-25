@@ -9,6 +9,7 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
+  SidebarRail,
 } from "@/components/ui/sidebar"
 import { getChatsWithBot } from "@/queries/bots"
 
@@ -16,7 +17,7 @@ export function AppSidebar() {
   const chatsPromise = getChatsWithBot()
 
   return (
-    <Sidebar>
+    <Sidebar collapsible="icon">
       <SidebarHeader>
         <NavActions />
         <NavSearch chatsPromise={chatsPromise} />
@@ -29,6 +30,7 @@ export function AppSidebar() {
       <SidebarFooter>
         <NavUser />
       </SidebarFooter>
+      <SidebarRail />
     </Sidebar>
   )
 }
