@@ -1,5 +1,6 @@
 import "server-only"
 
+import { cache } from "react"
 import { auth } from "@clerk/nextjs/server"
 import { asc, desc, eq } from "drizzle-orm"
 
@@ -10,7 +11,7 @@ import { chatMembers, chats } from "@/db/schema"
  * The signed-in user's chats, most recent first, each with the bot it shows.
  * Group chats fall back to their first member until they get their own face.
  */
-export async function getChatsWithBot() {
+export const getChatsWithBot = cache(async () => {
   const { isAuthenticated, userId } = await auth()
   if (!isAuthenticated) return []
 
@@ -39,6 +40,6 @@ export async function getChatsWithBot() {
     const bot = members[0]?.bot
     return bot ? [{ ...chat, bot }] : []
   })
-}
+})
 
 export type ChatWithBot = Awaited<ReturnType<typeof getChatsWithBot>>[number]
