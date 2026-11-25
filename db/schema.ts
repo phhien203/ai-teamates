@@ -1,4 +1,6 @@
 import { index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import type { z } from "zod";
 import { nanoid } from "nanoid";
 
 export const bots = pgTable(
@@ -21,3 +23,12 @@ export const bots = pgTable(
   },
   (t) => [index("bots_user_id_idx").on(t.userId)],
 );
+
+export const insertBotSchema = createInsertSchema(bots, {
+  name: (s) => s.trim().min(1, "Give your bot a name.").max(50),
+  avatar: (s) => s.min(1),
+  job: (s) => s.trim().min(1, "Describe the bot's job.").max(100),
+  instructions: (s) => s.trim().max(2000),
+}).omit({ id: true, userId: true, sandboxId: true, createdAt: true });
+
+export type InsertBot = z.infer<typeof insertBotSchema>;

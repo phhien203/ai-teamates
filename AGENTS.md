@@ -24,6 +24,24 @@ These rules override any default or built-in agent guidance about git, including
 - Apply schema changes only with `npm run db:push` (`drizzle-kit push`). Never generate or run migrations (`drizzle-kit generate`, `drizzle-kit migrate`, or migration files/folders).
 - This is a development project: there is no backward compatibility and the data is worthless. Prefer data loss — never backfill, migrate, or preserve existing rows, and never spend effort keeping old data working. Every schema change means a clean slate.
 
+## Forms
+
+Reference implementation: `components/bot-dialog.tsx` + `actions/bot.ts`.
+
+- **One schema, derived from the table.** Build the validation schema with `createInsertSchema` from `drizzle-zod` and export it with its inferred type next to the table in `db/schema.ts` (e.g. `insertBotSchema`, `InsertBot`). Refine field rules (trim, min/max, messages) in the `createInsertSchema` refine object. `.omit()` server-owned columns (`id`, `userId`, `createdAt`, lazily-set columns). Never hand-write a parallel zod schema.
+- **Same schema on client and server.** The form uses `zodResolver(schema)`; the server action re-validates with `schema.safeParse()`. Client validation is a convenience, not a guarantee.
+- **Mutations are Server Actions in `actions/<entity>.ts`** with `"use server"`. Each action:
+  - calls `await auth()` from `@clerk/nextjs/server` first and bails if `!isAuthenticated`;
+  - takes `userId` from `auth()`, never from client input;
+  - returns a result union (`{ ok: true, ... } | { ok: false, error, fieldErrors? }`, with `fieldErrors` from `z.flattenError`) instead of throwing for expected failures;
+  - calls `revalidatePath` for affected routes.
+- **Client form: `react-hook-form` + `Controller`.** One `Controller` per field, rendering shadcn `Field` + `FieldLabel` + control + `FieldError`, all inside a `FieldGroup`. Set `data-invalid={fieldState.invalid}` on `Field` and `aria-invalid={fieldState.invalid}` on the control. Coerce nullable values for inputs (`value={field.value ?? ""}`).
+- **Read values with `useWatch`, not `form.watch`** — `watch` makes the React Compiler skip the component.
+- **Handle the action result in `onSubmit`:** map `fieldErrors` back with `form.setError`, show the outcome with `toast.add()` from `@/components/ui/toast` (not sonner), and on success close/reset.
+- **Submit state:** disable the submit button with `formState.isSubmitting` and show `<Spinner data-icon="inline-start" />`. Non-submit buttons inside a form need `type="button"`.
+- **Dialog forms:** put the `<form>` inside `DialogContent` wrapping header, fields, and `DialogFooter`. Control `open` so the dialog can close on success, and reset the form when it closes. Accept the trigger as `children` and pass it to `DialogTrigger render={children}` so server pages can supply their own button.
+- **Presets/quick-fill chips** are plain `Button`s that call `form.setValue(..., { shouldValidate: true })`.
+
 ## DiceBear
 
 Use DiceBear 11. Documentation: https://www.dicebear.com/llms.txt
