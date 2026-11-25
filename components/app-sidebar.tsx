@@ -1,3 +1,4 @@
+import { NavActions } from "@/components/nav-actions"
 import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
@@ -10,7 +11,9 @@ import {
 export function AppSidebar() {
   return (
     <Sidebar>
-      <SidebarHeader />
+      <SidebarHeader>
+        <NavActions />
+      </SidebarHeader>
       <SidebarContent>
         <SidebarGroup />
       </SidebarContent>
