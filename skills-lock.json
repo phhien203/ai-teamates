@@ -162,6 +162,13 @@
       "skillPath": "skills/clerk-webhooks/SKILL.md",
       "computedHash": "b50cef6155462607f633da76c99f761a80eeae52819c6ba0b4ce0293561f165f"
     },
+    "daytona": {
+      "source": "daytona/skills",
+      "commit": "8411323a816e16cae0444b85c2e71f9197e0eac7",
+      "sourceType": "github",
+      "skillPath": "skills/daytona/SKILL.md",
+      "computedHash": "db4213550f2da73a7f78af6409d0a5b5fcd176fe02efd79f893d1ae38846541d"
+    },
     "migrate-ai-sdk-v6-to-v7": {
       "source": "vercel/ai",
       "commit": "0411a13df36b20bf6c67c82c1056e99d0e48257b",
