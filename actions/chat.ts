@@ -7,10 +7,11 @@ import {
   defaultStorage,
   type ChatStartSessionParams,
 } from "@trigger.dev/sdk/ai"
-import { and, eq } from "drizzle-orm"
+import { and, asc, eq } from "drizzle-orm"
 
 import { db } from "@/db"
-import { chats } from "@/db/schema"
+import { chatMembers, chats } from "@/db/schema"
+import { getBotDesktopUrl } from "@/lib/daytona"
 import type { LoadTranscriptResult } from "@trigger.dev/sdk/chat/react"
 import type { ChatUIMessage, chatAgent } from "@/trigger/chat"
 
@@ -51,4 +52,34 @@ export async function loadTranscript(params: {
   await assertChatOwner(params.chatId)
   // The stored messages were produced by chatAgent, so they carry its tool parts.
   return (await load(params)) as LoadTranscriptResult<ChatUIMessage>
+}
+
+/** Signed noVNC URL for the desktop of the chat's bot. */
+export async function getChatDesktopUrl(
+  chatId: string
+): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  const { isAuthenticated, userId } = await auth()
+  if (!isAuthenticated) return { ok: false, error: "Unauthorized" }
+
+  const row = await db.query.chats.findFirst({
+    where: and(eq(chats.id, chatId), eq(chats.userId, userId)),
+    columns: {},
+    with: {
+      members: {
+        orderBy: asc(chatMembers.joinedAt),
+        limit: 1,
+        columns: {},
+        with: { bot: { columns: { sandboxId: true } } },
+      },
+    },
+  })
+  const sandboxId = row?.members[0]?.bot.sandboxId
+  if (!sandboxId) return { ok: false, error: "Chat not found" }
+
+  try {
+    return { ok: true, url: await getBotDesktopUrl(sandboxId) }
+  } catch (error) {
+    console.error("Failed to open desktop for sandbox", sandboxId, error)
+    return { ok: false, error: "Couldn't start the desktop. Try again." }
+  }
 }

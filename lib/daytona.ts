@@ -28,3 +28,28 @@ export async function deleteBotSandbox(sandboxId: string): Promise<void> {
     throw error
   }
 }
+
+const NOVNC_PORT = 6080
+const DESKTOP_URL_TTL_SECONDS = 60 * 60
+
+/**
+ * Starts a bot's sandbox and desktop if needed, and returns a signed WebSocket
+ * URL to its VNC server (via websockify on the noVNC port). The token lives in
+ * the host, so it's port-bound and expires. A WebSocket is used rather than
+ * Daytona's vnc.html page because WebSocket connections skip the preview
+ * warning page that browser page loads get.
+ */
+export async function getBotDesktopUrl(sandboxId: string): Promise<string> {
+  const sandbox = await daytona.v0.get(sandboxId)
+  if (sandbox.state !== "started") await sandbox.start()
+  // Idempotent: brings up Xvfb/xfce4/x11vnc/novnc if they aren't running.
+  await sandbox.computerUse.start()
+
+  const { url } = await sandbox.getSignedPreviewUrl(
+    NOVNC_PORT,
+    DESKTOP_URL_TTL_SECONDS
+  )
+  const ws = new URL("/websockify", url)
+  ws.protocol = ws.protocol === "http:" ? "ws:" : "wss:"
+  return ws.toString()
+}
