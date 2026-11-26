@@ -1,6 +1,13 @@
 {
   "version": 2,
   "skills": {
+    "ai-elements": {
+      "source": "vercel/ai-elements",
+      "commit": "ca8be600bfd01b3131f9bf6134b51602a71f4374",
+      "sourceType": "github",
+      "skillPath": "skills/ai-elements/SKILL.md",
+      "computedHash": "e92b5aca35680ce4a8ed672ae9d8d8b58335e7fd48e3321911590882a7e7f619"
+    },
     "clerk": {
       "source": "clerk/skills",
       "commit": "e9a94f271affdfe9325da63d3267ff29d543fd7f",
