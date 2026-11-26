@@ -14,6 +14,7 @@ import {
   insertBotSchema,
   type InsertBot,
 } from "@/db/schema"
+import { createBotSandbox, deleteBotSandbox } from "@/lib/daytona"
 
 export type CreateBotResult =
   | { ok: true; id: string }
@@ -37,16 +38,33 @@ export async function createBot(input: InsertBot): Promise<CreateBotResult> {
   const botId = nanoid()
   const chatId = nanoid()
 
-  await db.batch([
-    db.insert(bots).values({
-      ...parsed.data,
-      id: botId,
-      instructions: parsed.data.instructions || null,
-      userId,
-    }),
-    db.insert(chats).values({ id: chatId, userId, kind: "direct" }),
-    db.insert(chatMembers).values({ chatId, botId }),
-  ])
+  let sandboxId: string
+  try {
+    sandboxId = await createBotSandbox({ id: botId, userId })
+  } catch (error) {
+    console.error("Failed to create sandbox for bot", botId, error)
+    return { ok: false, error: "Couldn't set up the bot's sandbox. Try again." }
+  }
+
+  try {
+    await db.batch([
+      db.insert(bots).values({
+        ...parsed.data,
+        id: botId,
+        instructions: parsed.data.instructions || null,
+        userId,
+        sandboxId,
+      }),
+      db.insert(chats).values({ id: chatId, userId, kind: "direct" }),
+      db.insert(chatMembers).values({ chatId, botId }),
+    ])
+  } catch (error) {
+    // Don't leave an orphaned sandbox behind if the bot never got saved.
+    await deleteBotSandbox(sandboxId).catch((cleanupError) =>
+      console.error("Failed to clean up sandbox", sandboxId, cleanupError)
+    )
+    throw error
+  }
 
   revalidatePath("/")
   return { ok: true, id: botId }
@@ -115,10 +133,16 @@ export async function deleteBot(id: string): Promise<DeleteBotResult> {
     db
       .delete(bots)
       .where(and(eq(bots.id, id), eq(bots.userId, userId)))
-      .returning({ id: bots.id }),
+      .returning({ id: bots.id, sandboxId: bots.sandboxId }),
   ])
 
   if (deleted.length === 0) return { ok: false, error: "Bot not found." }
+
+  // The bot is already gone, so a failed sandbox delete is logged, not surfaced.
+  const { sandboxId } = deleted[0]
+  await deleteBotSandbox(sandboxId).catch((error) =>
+    console.error("Failed to delete sandbox", sandboxId, error)
+  )
 
   revalidatePath("/", "layout")
   return { ok: true }

@@ -5,7 +5,7 @@ import {
   useLoadTranscript,
   useTriggerChatTransport,
 } from "@trigger.dev/sdk/chat/react"
-import type { UIMessage } from "ai"
+import { isStaticToolUIPart } from "ai"
 
 import {
   Conversation,
@@ -25,12 +25,13 @@ import {
   PromptInputTextarea,
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input"
+import { ToolCall } from "@/components/tool-call"
 import {
   loadTranscript,
   mintChatAccessToken,
   startChatSession,
 } from "@/actions/chat"
-import type { chatAgent } from "@/trigger/chat"
+import type { ChatUIMessage, chatAgent } from "@/trigger/chat"
 
 export function ChatView({ chatId }: { chatId: string }) {
   const transport = useTriggerChatTransport<typeof chatAgent>({
@@ -61,10 +62,10 @@ function ChatSession({
   transport,
 }: {
   chatId: string
-  initialMessages: UIMessage[]
+  initialMessages: ChatUIMessage[]
   transport: ReturnType<typeof useTriggerChatTransport<typeof chatAgent>>
 }) {
-  const { messages, sendMessage, status, stop } = useChat({
+  const { messages, sendMessage, status, stop } = useChat<ChatUIMessage>({
     id: chatId,
     messages: initialMessages,
     transport,
@@ -82,13 +83,19 @@ function ChatSession({
           {messages.map((message) => (
             <Message from={message.role} key={message.id}>
               <MessageContent>
-                {message.parts.map((part, i) =>
-                  part.type === "text" ? (
-                    <MessageResponse key={`${message.id}-${i}`}>
-                      {part.text}
-                    </MessageResponse>
-                  ) : null
-                )}
+                {message.parts.map((part, i) => {
+                  if (part.type === "text") {
+                    return (
+                      <MessageResponse key={`${message.id}-${i}`}>
+                        {part.text}
+                      </MessageResponse>
+                    )
+                  }
+                  if (isStaticToolUIPart(part)) {
+                    return <ToolCall key={part.toolCallId} part={part} />
+                  }
+                  return null
+                })}
               </MessageContent>
             </Message>
           ))}

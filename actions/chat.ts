@@ -11,7 +11,8 @@ import { and, eq } from "drizzle-orm"
 
 import { db } from "@/db"
 import { chats } from "@/db/schema"
-import type { chatAgent } from "@/trigger/chat"
+import type { LoadTranscriptResult } from "@trigger.dev/sdk/chat/react"
+import type { ChatUIMessage, chatAgent } from "@/trigger/chat"
 
 const start = chat.createStartSessionAction<typeof chatAgent>("chat")
 const load = chat.createLoadTranscriptAction(defaultStorage)
@@ -46,7 +47,8 @@ export async function mintChatAccessToken(chatId: string) {
 export async function loadTranscript(params: {
   chatId: string
   limit?: number
-}) {
+}): Promise<LoadTranscriptResult<ChatUIMessage>> {
   await assertChatOwner(params.chatId)
-  return load(params)
+  // The stored messages were produced by chatAgent, so they carry its tool parts.
+  return (await load(params)) as LoadTranscriptResult<ChatUIMessage>
 }

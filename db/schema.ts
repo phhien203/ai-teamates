@@ -24,7 +24,7 @@ export const bots = pgTable(
       .$defaultFn(() => nanoid()), // seed for the bot's face
     job: text("job").notNull(), // what the bot is for, in a phrase
     instructions: text("instructions"), // how it should go about the job
-    sandboxId: text("sandbox_id"), // created lazily
+    sandboxId: text("sandbox_id").notNull().unique(), // Daytona sandbox, created with the bot
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
