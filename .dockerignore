@@ -1,0 +1,9 @@
+# Agent tooling (symlinked skills break Railpack's copy step; not needed at build/runtime)
+.claude
+.agents
+
+# Local-only
+.git
+.next
+node_modules
+.env*
