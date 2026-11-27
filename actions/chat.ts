@@ -20,6 +20,12 @@ import {
   insertGroupChatSchema,
   type InsertGroupChat,
 } from "@/db/schema"
+import {
+  FEATURES,
+  hasFeatures,
+  UPGRADE_REQUIRED,
+  type UpgradeRequired,
+} from "@/lib/billing"
 import { getBotDesktopUrl } from "@/lib/daytona"
 import type { LoadTranscriptResult } from "@trigger.dev/sdk/chat/react"
 import type { ChatUIMessage, chatAgent } from "@/trigger/chat"
@@ -27,10 +33,16 @@ import type { ChatUIMessage, chatAgent } from "@/trigger/chat"
 const start = chat.createStartSessionAction<typeof chatAgent>("chat")
 const load = chat.createLoadTranscriptAction(defaultStorage)
 
-/** Throws unless the signed-in user owns the chat. */
-async function assertChatOwner(chatId: string) {
-  const { isAuthenticated, userId } = await auth()
+/**
+ * Throws unless the signed-in user owns the chat. With `requirePlan`, also
+ * throws unless their plan covers talking to bots (whose turns use sandboxes).
+ */
+async function assertChatOwner(chatId: string, requirePlan = false) {
+  const { isAuthenticated, userId, has } = await auth()
   if (!isAuthenticated) throw new Error("Unauthorized")
+  if (requirePlan && !hasFeatures(has, FEATURES.bots, FEATURES.sandboxes)) {
+    throw new Error(UPGRADE_REQUIRED.error)
+  }
 
   const chat = await db.query.chats.findFirst({
     where: and(eq(chats.id, chatId), eq(chats.userId, userId)),
@@ -42,12 +54,14 @@ async function assertChatOwner(chatId: string) {
 export type CreateGroupChatResult =
   | { ok: true; id: string }
   | { ok: false; error: string; fieldErrors?: Record<string, string[]> }
+  | UpgradeRequired
 
 export async function createGroupChat(
   input: InsertGroupChat
 ): Promise<CreateGroupChatResult> {
-  const { isAuthenticated, userId } = await auth()
+  const { isAuthenticated, userId, has } = await auth()
   if (!isAuthenticated) return { ok: false, error: "You must be signed in." }
+  if (!hasFeatures(has, FEATURES.bots)) return UPGRADE_REQUIRED
 
   const parsed = insertGroupChatSchema.safeParse(input)
   if (!parsed.success) {
@@ -84,13 +98,15 @@ export async function createGroupChat(
 export type UpdateGroupChatResult =
   | { ok: true }
   | { ok: false; error: string; fieldErrors?: Record<string, string[]> }
+  | UpgradeRequired
 
 export async function updateGroupChat(
   id: string,
   input: InsertGroupChat
 ): Promise<UpdateGroupChatResult> {
-  const { isAuthenticated, userId } = await auth()
+  const { isAuthenticated, userId, has } = await auth()
   if (!isAuthenticated) return { ok: false, error: "You must be signed in." }
+  if (!hasFeatures(has, FEATURES.bots)) return UPGRADE_REQUIRED
 
   const parsed = insertGroupChatSchema.safeParse(input)
   if (!parsed.success) {
@@ -140,6 +156,7 @@ export async function updateGroupChat(
 
 export type DeleteGroupChatResult = { ok: true } | { ok: false; error: string }
 
+// Not gated: free users can always clean up what they have.
 export async function deleteGroupChat(
   id: string
 ): Promise<DeleteGroupChatResult> {
@@ -181,18 +198,19 @@ async function ownsBots(userId: string, botIds: string[]) {
 export async function startChatSession(
   params: ChatStartSessionParams<typeof chatAgent>
 ) {
-  await assertChatOwner(params.chatId)
+  await assertChatOwner(params.chatId, true)
   return start(params)
 }
 
 export async function mintChatAccessToken(chatId: string) {
-  await assertChatOwner(chatId)
+  await assertChatOwner(chatId, true)
   return triggerAuth.createPublicToken({
     scopes: { read: { sessions: chatId }, write: { sessions: chatId } },
     expirationTime: "1h",
   })
 }
 
+// Not gated: free users can still read their chat history.
 export async function loadTranscript(params: {
   chatId: string
   limit?: number
@@ -205,9 +223,12 @@ export async function loadTranscript(params: {
 /** Signed noVNC URL for the desktop of the chat's bot. */
 export async function getChatDesktopUrl(
   chatId: string
-): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
-  const { isAuthenticated, userId } = await auth()
+): Promise<
+  { ok: true; url: string } | { ok: false; error: string } | UpgradeRequired
+> {
+  const { isAuthenticated, userId, has } = await auth()
   if (!isAuthenticated) return { ok: false, error: "Unauthorized" }
+  if (!hasFeatures(has, FEATURES.sandboxes)) return UPGRADE_REQUIRED
 
   const row = await db.query.chats.findFirst({
     where: and(eq(chats.id, chatId), eq(chats.userId, userId)),

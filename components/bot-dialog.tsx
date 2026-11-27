@@ -44,7 +44,9 @@ import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
+import { showUpgradeToast } from "@/components/upgrade-toast"
 import { insertBotSchema, type InsertBot } from "@/db/schema"
+import { isUpgradeRequired } from "@/lib/billing"
 
 const TEMPLATES = [
   {
@@ -122,6 +124,10 @@ export function BotDialog({
       ? await updateBot(bot.id, values)
       : await createBot(values)
 
+    if (isUpgradeRequired(result)) {
+      showUpgradeToast(router.push)
+      return
+    }
     if (!result.ok) {
       for (const [name, messages] of Object.entries(result.fieldErrors ?? {})) {
         form.setError(name as keyof InsertBot, { message: messages?.[0] })

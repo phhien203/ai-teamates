@@ -14,15 +14,26 @@ import {
   insertBotSchema,
   type InsertBot,
 } from "@/db/schema"
+import {
+  FEATURES,
+  hasFeatures,
+  UPGRADE_REQUIRED,
+  type UpgradeRequired,
+} from "@/lib/billing"
 import { createBotSandbox, deleteBotSandbox } from "@/lib/daytona"
 
 export type CreateBotResult =
   | { ok: true; id: string }
   | { ok: false; error: string; fieldErrors?: Record<string, string[]> }
+  | UpgradeRequired
 
 export async function createBot(input: InsertBot): Promise<CreateBotResult> {
-  const { isAuthenticated, userId } = await auth()
+  const { isAuthenticated, userId, has } = await auth()
   if (!isAuthenticated) return { ok: false, error: "You must be signed in." }
+  // Every bot comes with its own sandbox.
+  if (!hasFeatures(has, FEATURES.bots, FEATURES.sandboxes)) {
+    return UPGRADE_REQUIRED
+  }
 
   const parsed = insertBotSchema.safeParse(input)
   if (!parsed.success) {
@@ -73,13 +84,15 @@ export async function createBot(input: InsertBot): Promise<CreateBotResult> {
 export type UpdateBotResult =
   | { ok: true }
   | { ok: false; error: string; fieldErrors?: Record<string, string[]> }
+  | UpgradeRequired
 
 export async function updateBot(
   id: string,
   input: InsertBot
 ): Promise<UpdateBotResult> {
-  const { isAuthenticated, userId } = await auth()
+  const { isAuthenticated, userId, has } = await auth()
   if (!isAuthenticated) return { ok: false, error: "You must be signed in." }
+  if (!hasFeatures(has, FEATURES.bots)) return UPGRADE_REQUIRED
 
   const parsed = insertBotSchema.safeParse(input)
   if (!parsed.success) {
@@ -108,6 +121,7 @@ export async function updateBot(
 
 export type DeleteBotResult = { ok: true } | { ok: false; error: string }
 
+// Not gated: free users can always clean up (and free) what they have.
 export async function deleteBot(id: string): Promise<DeleteBotResult> {
   const { isAuthenticated, userId } = await auth()
   if (!isAuthenticated) return { ok: false, error: "You must be signed in." }

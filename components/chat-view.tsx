@@ -2,11 +2,13 @@
 
 import * as React from "react"
 import { useChat } from "@ai-sdk/react"
+import { useAuth } from "@clerk/nextjs"
 import {
   useLoadTranscript,
   useTriggerChatTransport,
 } from "@trigger.dev/sdk/chat/react"
 import { isStaticToolUIPart } from "ai"
+import { useRouter } from "next/navigation"
 
 import {
   Conversation,
@@ -35,11 +37,13 @@ import {
 import { ChatAvatar } from "@/components/chat-avatar"
 import { Badge } from "@/components/ui/badge"
 import { ToolCall } from "@/components/tool-call"
+import { showUpgradeToast } from "@/components/upgrade-toast"
 import {
   loadTranscript,
   mintChatAccessToken,
   startChatSession,
 } from "@/actions/chat"
+import { FEATURES, hasFeatures } from "@/lib/billing"
 import type { Chat } from "@/queries/chats"
 import type { ChatUIMessage, chatAgent } from "@/trigger/chat"
 
@@ -106,6 +110,8 @@ function ChatSession({
   // Handoffs since the user's last message, so bots can't pass it around
   // forever.
   const handoffCount = React.useRef(0)
+  const { has } = useAuth()
+  const router = useRouter()
 
   const { messages, sendMessage, status, stop } = useChat<ChatUIMessage>({
     id: chatId,
@@ -142,6 +148,13 @@ function ChatSession({
 
   function handleSubmit(message: PromptInputMessage) {
     if (!message.text.trim()) return
+    // The server refuses to start a turn too (actions/chat.ts); checking here
+    // gives a toast instead of a failed stream.
+    if (!hasFeatures(has, FEATURES.bots, FEATURES.sandboxes)) {
+      showUpgradeToast(router.push)
+      // Throwing tells PromptInput to keep the draft.
+      throw new Error("Upgrade required")
+    }
     handoffCount.current = 0
     // Recorded on the message itself (not just the request), so the transcript
     // shows which bot each prompt was for.

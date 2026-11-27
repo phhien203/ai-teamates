@@ -3,11 +3,14 @@
 import { useEffect, useRef, useState } from "react"
 import type RFB from "@novnc/novnc"
 import { MaximizeIcon } from "lucide-react"
+import { useRouter } from "next/navigation"
 
 import { getChatDesktopUrl } from "@/actions/chat"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Spinner } from "@/components/ui/spinner"
+import { showUpgradeToast } from "@/components/upgrade-toast"
+import { isUpgradeRequired } from "@/lib/billing"
 import { cn } from "cn"
 
 type DesktopState =
@@ -31,10 +34,12 @@ export function DesktopPanel({ chatId }: { chatId: string }) {
   const rfbRef = useRef<RFB | null>(null)
   const [desktop, setDesktop] = useState<DesktopState>({ status: "idle" })
   const [fullscreen, setFullscreen] = useState(false)
+  const router = useRouter()
 
   async function load() {
     setDesktop({ status: "loading" })
     const result = await getChatDesktopUrl(chatId)
+    if (isUpgradeRequired(result)) showUpgradeToast(router.push)
     setDesktop(
       result.ok
         ? { status: "connecting", url: result.url }
