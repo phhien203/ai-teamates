@@ -9,6 +9,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable"
+import { getBots } from "@/queries/bots"
 import { getChat } from "@/queries/chats"
 
 export default async function Page(props: PageProps<"/chats/[chatId]">) {
@@ -22,7 +23,7 @@ export default async function Page(props: PageProps<"/chats/[chatId]">) {
   if (chat.kind === "group") {
     return (
       <div className="flex h-svh flex-col overflow-hidden">
-        <ChatHeader chat={chat} />
+        <ChatHeader chat={chat} botsPromise={getBots()} />
         <ChatView key={chat.id} chat={chat} />
       </div>
     )
@@ -41,7 +42,7 @@ export default async function Page(props: PageProps<"/chats/[chatId]">) {
         className="flex flex-col"
         style={{ overflow: "hidden" }}
       >
-        <ChatHeader chat={chat} />
+        <ChatHeader chat={chat} botsPromise={getBots()} />
         <ChatView key={chat.id} chat={chat} />
       </ResizablePanel>
       <ResizableHandle />

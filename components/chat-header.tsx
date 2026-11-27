@@ -5,14 +5,23 @@ import { useParentGroup } from "react-resizable-panels"
 
 import { BotDialog } from "@/components/bot-dialog"
 import { GroupChatAvatar } from "@/components/group-chat-avatar"
+import { GroupChatDialog } from "@/components/group-chat-dialog"
 import { Button } from "@/components/ui/button"
+import type { BotSummary } from "@/queries/bots"
 import type { Chat } from "@/queries/chats"
 
 // Panel ids defined in app/(dashboard)/chats/[chatId]/page.tsx.
 const CHAT_PANEL_ID = "chat"
 const DESKTOP_PANEL_ID = "desktop"
 
-export function ChatHeader({ chat }: { chat: Chat }) {
+export function ChatHeader({
+  chat,
+  botsPromise,
+}: {
+  chat: Chat
+  /** The user's bots, for editing a group chat's members. */
+  botsPromise: Promise<BotSummary[]>
+}) {
   const group = useParentGroup()
 
   function toggleDesktop() {
@@ -25,14 +34,29 @@ export function ChatHeader({ chat }: { chat: Chat }) {
     )
   }
 
-  // Group chats have no bot of their own to edit and no desktop to show.
+  // Group chats edit the group rather than a bot, and have no desktop.
   if (chat.kind === "group") {
+    const name = chat.name ?? ""
     return (
       <header className="flex h-12 shrink-0 items-center gap-2 px-2">
-        <div className="flex min-w-0 items-center gap-2 px-2.5">
-          <GroupChatAvatar bots={chat.bots} className="size-5" />
-          <span className="truncate text-sm font-medium">{chat.name}</span>
-        </div>
+        <GroupChatDialog
+          chat={{
+            id: chat.id,
+            name,
+            botIds: chat.bots.map((bot) => bot.id),
+          }}
+          botsPromise={botsPromise}
+        >
+          <Button
+            type="button"
+            variant="ghost"
+            aria-label={`Edit ${name}`}
+            className="min-w-0"
+          >
+            <GroupChatAvatar bots={chat.bots} className="size-5" />
+            <span className="truncate text-sm font-medium">{name}</span>
+          </Button>
+        </GroupChatDialog>
       </header>
     )
   }

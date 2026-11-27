@@ -50,7 +50,11 @@ const MAX_HANDOFFS = 2
 export function ChatView({ chat }: { chat: Chat }) {
   const chatId = chat.id
   // The bot that answers the next message. Direct chats only have the one.
-  const [botId, setBotId] = React.useState(chat.bots[0].id)
+  const [selectedBotId, setBotId] = React.useState(chat.bots[0].id)
+  // Falls back to the first member if the selected bot left the group.
+  const botId = chat.bots.some((bot) => bot.id === selectedBotId)
+    ? selectedBotId
+    : chat.bots[0].id
 
   // The selected bot travels as transport metadata (clientData): the transport
   // live-updates it and sends it with every turn.

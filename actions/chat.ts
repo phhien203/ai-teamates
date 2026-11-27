@@ -7,7 +7,7 @@ import {
   defaultStorage,
   type ChatStartSessionParams,
 } from "@trigger.dev/sdk/ai"
-import { and, asc, eq, inArray } from "drizzle-orm"
+import { and, asc, eq, inArray, notInArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { nanoid } from "nanoid"
 import { z } from "zod"
@@ -59,17 +59,7 @@ export async function createGroupChat(
   }
 
   const botIds = [...new Set(parsed.data.botIds)]
-  const owned = await db
-    .select({ id: bots.id })
-    .from(bots)
-    .where(and(eq(bots.userId, userId), inArray(bots.id, botIds)))
-  if (owned.length !== botIds.length) {
-    return {
-      ok: false,
-      error: "Some of those bots no longer exist.",
-      fieldErrors: { botIds: ["Pick bots from your list."] },
-    }
-  }
+  if (!(await ownsBots(userId, botIds))) return MISSING_BOTS
 
   const chatId = nanoid()
   // Members are ordered by joinedAt, so stagger it to keep the picked order.
@@ -89,6 +79,103 @@ export async function createGroupChat(
 
   revalidatePath("/", "layout")
   return { ok: true, id: chatId }
+}
+
+export type UpdateGroupChatResult =
+  | { ok: true }
+  | { ok: false; error: string; fieldErrors?: Record<string, string[]> }
+
+export async function updateGroupChat(
+  id: string,
+  input: InsertGroupChat
+): Promise<UpdateGroupChatResult> {
+  const { isAuthenticated, userId } = await auth()
+  if (!isAuthenticated) return { ok: false, error: "You must be signed in." }
+
+  const parsed = insertGroupChatSchema.safeParse(input)
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Please fix the highlighted fields.",
+      fieldErrors: z.flattenError(parsed.error).fieldErrors,
+    }
+  }
+
+  const botIds = [...new Set(parsed.data.botIds)]
+  if (!(await ownsBots(userId, botIds))) return MISSING_BOTS
+
+  const updated = await db
+    .update(chats)
+    .set({ name: parsed.data.name })
+    .where(
+      and(eq(chats.id, id), eq(chats.userId, userId), eq(chats.kind, "group"))
+    )
+    .returning({ id: chats.id })
+  if (updated.length === 0) return { ok: false, error: "Group not found." }
+
+  // Removed bots leave; new ones join after the current members, in the
+  // picked order. Bots that stay keep their place.
+  const now = Date.now()
+  await db.batch([
+    db
+      .delete(chatMembers)
+      .where(
+        and(eq(chatMembers.chatId, id), notInArray(chatMembers.botId, botIds))
+      ),
+    db
+      .insert(chatMembers)
+      .values(
+        botIds.map((botId, i) => ({
+          chatId: id,
+          botId,
+          joinedAt: new Date(now + i),
+        }))
+      )
+      .onConflictDoNothing(),
+  ])
+
+  revalidatePath("/", "layout")
+  return { ok: true }
+}
+
+export type DeleteGroupChatResult = { ok: true } | { ok: false; error: string }
+
+export async function deleteGroupChat(
+  id: string
+): Promise<DeleteGroupChatResult> {
+  const { isAuthenticated, userId } = await auth()
+  if (!isAuthenticated) return { ok: false, error: "You must be signed in." }
+
+  // Members go with it via the cascade; the bots themselves stay.
+  const deleted = await db
+    .delete(chats)
+    .where(
+      and(eq(chats.id, id), eq(chats.userId, userId), eq(chats.kind, "group"))
+    )
+    .returning({ id: chats.id })
+  if (deleted.length === 0) return { ok: false, error: "Group not found." }
+
+  revalidatePath("/", "layout")
+  return { ok: true }
+}
+
+const MISSING_BOTS: {
+  ok: false
+  error: string
+  fieldErrors: Record<string, string[]>
+} = {
+  ok: false,
+  error: "Some of those bots no longer exist.",
+  fieldErrors: { botIds: ["Pick bots from your list."] },
+}
+
+/** Whether every one of `botIds` is a bot the user owns. */
+async function ownsBots(userId: string, botIds: string[]) {
+  const owned = await db
+    .select({ id: bots.id })
+    .from(bots)
+    .where(and(eq(bots.userId, userId), inArray(bots.id, botIds)))
+  return owned.length === botIds.length
 }
 
 export async function startChatSession(

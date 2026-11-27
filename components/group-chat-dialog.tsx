@@ -2,11 +2,27 @@
 
 import * as React from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
+import { Trash2Icon } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Controller, useForm } from "react-hook-form"
 
-import { createGroupChat } from "@/actions/chat"
+import {
+  createGroupChat,
+  deleteGroupChat,
+  updateGroupChat,
+} from "@/actions/chat"
 import { ChatAvatar } from "@/components/chat-avatar"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -35,15 +51,26 @@ import { toast } from "@/components/ui/toast"
 import { insertGroupChatSchema, type InsertGroupChat } from "@/db/schema"
 import type { BotSummary } from "@/queries/bots"
 
-const DEFAULT_VALUES: InsertGroupChat = { name: "", botIds: [] }
+type EditableGroupChat = InsertGroupChat & { id: string }
 
-/** Creates a group chat from a name and two or more of the user's bots. */
+function defaultValues(chat?: EditableGroupChat): InsertGroupChat {
+  return chat
+    ? { name: chat.name, botIds: chat.botIds }
+    : { name: "", botIds: [] }
+}
+
+/**
+ * Creates a group chat from a name and two or more of the user's bots, or
+ * edits `chat` when given one.
+ */
 export function GroupChatDialog({
+  chat,
   botsPromise,
   children,
   open: openProp,
   onOpenChange,
 }: {
+  chat?: EditableGroupChat
   botsPromise: Promise<BotSummary[]>
   children?: React.ReactElement
   open?: boolean
@@ -61,13 +88,15 @@ export function GroupChatDialog({
 
   const form = useForm<InsertGroupChat>({
     resolver: zodResolver(insertGroupChatSchema),
-    defaultValues: DEFAULT_VALUES,
+    defaultValues: defaultValues(chat),
   })
 
   const { isSubmitting } = form.formState
 
   async function onSubmit(values: InsertGroupChat) {
-    const result = await createGroupChat(values)
+    const result = chat
+      ? await updateGroupChat(chat.id, values)
+      : await createGroupChat(values)
 
     if (!result.ok) {
       for (const [name, messages] of Object.entries(result.fieldErrors ?? {})) {
@@ -79,10 +108,13 @@ export function GroupChatDialog({
       return
     }
 
-    toast.add({ type: "success", title: `${values.name} is ready` })
+    toast.add({
+      type: "success",
+      title: chat ? `${values.name} is updated` : `${values.name} is ready`,
+    })
     setOpen(false)
-    form.reset(DEFAULT_VALUES)
-    router.push(`/chats/${result.id}`)
+    form.reset(defaultValues(chat && { ...values, id: chat.id }))
+    if ("id" in result) router.push(`/chats/${result.id}`)
   }
 
   return (
@@ -90,7 +122,7 @@ export function GroupChatDialog({
       open={open}
       onOpenChange={(next) => {
         setOpen(next)
-        if (!next) form.reset(DEFAULT_VALUES)
+        if (!next) form.reset(defaultValues(chat))
       }}
     >
       {children && <DialogTrigger render={children} />}
@@ -100,9 +132,13 @@ export function GroupChatDialog({
           className="flex flex-col gap-6"
         >
           <DialogHeader>
-            <DialogTitle>New group chat</DialogTitle>
+            <DialogTitle>
+              {chat ? "Edit group chat" : "New group chat"}
+            </DialogTitle>
             <DialogDescription>
-              Name the group and pick which bots are in it.
+              {chat
+                ? "Rename the group, or add and remove bots."
+                : "Name the group and pick which bots are in it."}
             </DialogDescription>
           </DialogHeader>
 
@@ -151,12 +187,21 @@ export function GroupChatDialog({
           </FieldGroup>
 
           <DialogFooter>
+            {chat && (
+              <DeleteGroupChatButton
+                chat={chat}
+                onDeleted={() => {
+                  setOpen(false)
+                  router.push("/")
+                }}
+              />
+            )}
             <DialogClose render={<Button type="button" variant="outline" />}>
               Cancel
             </DialogClose>
             <Button type="submit" disabled={isSubmitting}>
               {isSubmitting && <Spinner data-icon="inline-start" />}
-              Create group
+              {chat ? "Save changes" : "Create group"}
             </Button>
           </DialogFooter>
         </form>
@@ -229,5 +274,65 @@ function BotOptionsSkeleton() {
         </div>
       ))}
     </div>
+  )
+}
+
+function DeleteGroupChatButton({
+  chat,
+  onDeleted,
+}: {
+  chat: EditableGroupChat
+  onDeleted: () => void
+}) {
+  const [open, setOpen] = React.useState(false)
+  const [isDeleting, startDeleting] = React.useTransition()
+
+  function onConfirm() {
+    startDeleting(async () => {
+      const result = await deleteGroupChat(chat.id)
+
+      if (!result.ok) {
+        toast.add({ type: "error", title: result.error })
+        return
+      }
+
+      toast.add({ type: "success", title: `${chat.name} was deleted` })
+      setOpen(false)
+      onDeleted()
+    })
+  }
+
+  return (
+    <AlertDialog open={open} onOpenChange={setOpen}>
+      <AlertDialogTrigger
+        render={
+          <Button type="button" variant="destructive" className="sm:mr-auto" />
+        }
+      >
+        <Trash2Icon data-icon="inline-start" />
+        Delete
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete {chat.name}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This deletes the group chat and its messages. Its bots and their
+            other chats stay. You can&apos;t undo this.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            type="button"
+            variant="destructive"
+            disabled={isDeleting}
+            onClick={onConfirm}
+          >
+            {isDeleting && <Spinner data-icon="inline-start" />}
+            Delete
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }

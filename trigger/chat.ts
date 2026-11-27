@@ -41,24 +41,13 @@ type ChatInfo = {
   bots: Bot[]
 }
 
-// Per-worker caches: a chat's members don't change, and reusing a bot's tool
-// set keeps one sandbox connection per bot.
-const chatsById = new Map<string, Promise<ChatInfo>>()
+// Per-worker cache: reusing a bot's tool set keeps one sandbox connection per
+// bot.
 const toolsBySandbox = new Map<string, SandboxTools>()
 
-function getChatInfo(chatId: string) {
-  let info = chatsById.get(chatId)
-  if (!info) {
-    info = loadChatInfo(chatId).catch((error) => {
-      chatsById.delete(chatId)
-      throw error
-    })
-    chatsById.set(chatId, info)
-  }
-  return info
-}
-
-async function loadChatInfo(chatId: string): Promise<ChatInfo> {
+// Loaded fresh every turn (not cached): a group's name and members can be
+// edited while its chat is running.
+async function getChatInfo(chatId: string): Promise<ChatInfo> {
   const row = await db.query.chats.findFirst({
     where: eq(chats.id, chatId),
     columns: { kind: true, name: true },
