@@ -15,9 +15,6 @@ export default withSentryConfig(nextConfig, {
   // Upload a wider set of client source files for better stack trace resolution
   widenClientFileUpload: true,
 
-  // Proxy browser events through the app to bypass ad-blockers
-  tunnelRoute: "/monitoring",
-
   // Suppress non-CI output
   silent: !process.env.CI,
 })

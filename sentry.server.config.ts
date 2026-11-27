@@ -15,4 +15,7 @@ Sentry.init({
 
   // Attach local variable values to stack frames
   includeLocalVariables: true,
+
+  // Forward browser events sent to /monitoring on to Sentry
+  integrations: [Sentry.serveTunnelIntegration({ path: "/monitoring" })],
 })

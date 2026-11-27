@@ -17,6 +17,9 @@ Sentry.init({
   replaysSessionSampleRate: 0.1,
   replaysOnErrorSampleRate: 1.0,
 
+  // Send events through the app (served by serveTunnelIntegration) so ad-blockers don't drop them
+  tunnel: { path: "/monitoring" },
+
   integrations: [Sentry.replayIntegration()],
 })
 
