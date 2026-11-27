@@ -1,12 +1,14 @@
 "use client"
 
 import { UserButton } from "@clerk/nextjs"
+import { GaugeIcon } from "lucide-react"
 
 import {
   SidebarMenu,
   SidebarMenuItem,
   sidebarMenuButtonVariants,
 } from "@/components/ui/sidebar"
+import { USAGE_PATH } from "@/lib/billing"
 import { cn } from "@/lib/utils"
 
 export function NavUser() {
@@ -28,7 +30,16 @@ export function NavUser() {
                 "truncate ps-0 text-sm font-medium text-inherit group-data-[collapsible=icon]:hidden",
             },
           }}
-        />
+        >
+          {/* The usage page is only reachable from here. */}
+          <UserButton.MenuItems>
+            <UserButton.Link
+              label="Usage"
+              labelIcon={<GaugeIcon className="size-4" />}
+              href={USAGE_PATH}
+            />
+          </UserButton.MenuItems>
+        </UserButton>
       </SidebarMenuItem>
     </SidebarMenu>
   )

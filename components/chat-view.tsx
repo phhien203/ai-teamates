@@ -37,7 +37,8 @@ import {
 import { ChatAvatar } from "@/components/chat-avatar"
 import { Badge } from "@/components/ui/badge"
 import { ToolCall } from "@/components/tool-call"
-import { showUpgradeToast } from "@/components/upgrade-toast"
+import { toast } from "@/components/ui/toast"
+import { showUpgradeToast, toastBillingError } from "@/components/upgrade-toast"
 import {
   loadTranscript,
   mintChatAccessToken,
@@ -117,6 +118,12 @@ function ChatSession({
     id: chatId,
     messages: initialMessages,
     transport,
+    // The agent ends a turn with an error when the plan or usage allowance
+    // doesn't cover it (trigger/chat.ts).
+    onError: (error) => {
+      if (toastBillingError(error.message, router.push)) return
+      toast.add({ type: "error", title: "Something went wrong. Try again." })
+    },
     onFinish: ({ message, isAbort, isError }) => {
       if (!bots || isAbort || isError) return
       const handoff = message.parts.findLast(

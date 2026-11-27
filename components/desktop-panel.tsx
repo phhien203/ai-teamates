@@ -5,13 +5,14 @@ import type RFB from "@novnc/novnc"
 import { MaximizeIcon } from "lucide-react"
 import { useRouter } from "next/navigation"
 
-import { getChatDesktopUrl } from "@/actions/chat"
+import { getChatDesktopUrl, pingChatDesktop } from "@/actions/chat"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Spinner } from "@/components/ui/spinner"
-import { showUpgradeToast } from "@/components/upgrade-toast"
-import { isUpgradeRequired } from "@/lib/billing"
+import { toastBillingFailure } from "@/components/upgrade-toast"
 import { cn } from "cn"
+
+const DESKTOP_PING_MS = 60_000
 
 type DesktopState =
   | { status: "idle" | "loading" }
@@ -39,7 +40,7 @@ export function DesktopPanel({ chatId }: { chatId: string }) {
   async function load() {
     setDesktop({ status: "loading" })
     const result = await getChatDesktopUrl(chatId)
-    if (isUpgradeRequired(result)) showUpgradeToast(router.push)
+    toastBillingFailure(result, router.push)
     setDesktop(
       result.ok
         ? { status: "connecting", url: result.url }
@@ -96,6 +97,21 @@ export function DesktopPanel({ chatId }: { chatId: string }) {
       rfb?.disconnect()
     }
   }, [url])
+
+  // Watching the desktop keeps the sandbox running, so it's metered while
+  // connected. Out of sandbox time (or plan) means disconnecting.
+  const connected = desktop.status === "connected"
+  useEffect(() => {
+    if (!connected) return
+    const timer = setInterval(async () => {
+      const result = await pingChatDesktop(chatId)
+      if (result.ok) return
+      toastBillingFailure(result, router.push)
+      setFullscreen(false)
+      setDesktop({ status: "error", error: result.error })
+    }, DESKTOP_PING_MS)
+    return () => clearInterval(timer)
+  }, [connected, chatId, router])
 
   // Input is only accepted fullscreen; the panel is a click-to-open preview.
   useEffect(() => {

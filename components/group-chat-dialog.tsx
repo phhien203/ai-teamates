@@ -48,9 +48,8 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { toast } from "@/components/ui/toast"
-import { showUpgradeToast } from "@/components/upgrade-toast"
+import { toastBillingFailure } from "@/components/upgrade-toast"
 import { insertGroupChatSchema, type InsertGroupChat } from "@/db/schema"
-import { isUpgradeRequired } from "@/lib/billing"
 import type { BotSummary } from "@/queries/bots"
 
 type EditableGroupChat = InsertGroupChat & { id: string }
@@ -100,10 +99,7 @@ export function GroupChatDialog({
       ? await updateGroupChat(chat.id, values)
       : await createGroupChat(values)
 
-    if (isUpgradeRequired(result)) {
-      showUpgradeToast(router.push)
-      return
-    }
+    if (toastBillingFailure(result, router.push)) return
     if (!result.ok) {
       for (const [name, messages] of Object.entries(result.fieldErrors ?? {})) {
         form.setError(name as keyof InsertGroupChat, {

@@ -24,8 +24,11 @@ import {
   FEATURES,
   hasFeatures,
   UPGRADE_REQUIRED,
+  usageLimitReached,
   type UpgradeRequired,
+  type UsageLimitReached,
 } from "@/lib/billing"
+import { meterSandboxUse, UsageLimitError } from "@/lib/usage"
 import { getBotDesktopUrl } from "@/lib/daytona"
 import type { LoadTranscriptResult } from "@trigger.dev/sdk/chat/react"
 import type { ChatUIMessage, chatAgent } from "@/trigger/chat"
@@ -220,12 +223,19 @@ export async function loadTranscript(params: {
   return (await load(params)) as LoadTranscriptResult<ChatUIMessage>
 }
 
-/** Signed noVNC URL for the desktop of the chat's bot. */
-export async function getChatDesktopUrl(
+type DesktopResult<T> =
+  | ({ ok: true } & T)
+  | { ok: false; error: string }
+  | UpgradeRequired
+  | UsageLimitReached
+
+/**
+ * The bot behind a direct chat's desktop, after checking and charging its
+ * sandbox time. Returns a failure result instead when that's not allowed.
+ */
+async function openChatDesktop(
   chatId: string
-): Promise<
-  { ok: true; url: string } | { ok: false; error: string } | UpgradeRequired
-> {
+): Promise<DesktopResult<{ sandboxId: string }>> {
   const { isAuthenticated, userId, has } = await auth()
   if (!isAuthenticated) return { ok: false, error: "Unauthorized" }
   if (!hasFeatures(has, FEATURES.sandboxes)) return UPGRADE_REQUIRED
@@ -238,12 +248,31 @@ export async function getChatDesktopUrl(
         orderBy: asc(chatMembers.joinedAt),
         limit: 1,
         columns: {},
-        with: { bot: { columns: { sandboxId: true } } },
+        with: { bot: { columns: { id: true, sandboxId: true } } },
       },
     },
   })
-  const sandboxId = row?.members[0]?.bot.sandboxId
-  if (!sandboxId) return { ok: false, error: "Chat not found" }
+  const bot = row?.members[0]?.bot
+  if (!bot) return { ok: false, error: "Chat not found" }
+
+  try {
+    await meterSandboxUse(bot.id)
+  } catch (error) {
+    if (!(error instanceof UsageLimitError)) throw error
+    return error.reason === "plan"
+      ? UPGRADE_REQUIRED
+      : usageLimitReached("sandbox")
+  }
+  return { ok: true, sandboxId: bot.sandboxId }
+}
+
+/** Signed noVNC URL for the desktop of the chat's bot. */
+export async function getChatDesktopUrl(
+  chatId: string
+): Promise<DesktopResult<{ url: string }>> {
+  const result = await openChatDesktop(chatId)
+  if (!result.ok) return result
+  const { sandboxId } = result
 
   try {
     return { ok: true, url: await getBotDesktopUrl(sandboxId) }
@@ -251,4 +280,14 @@ export async function getChatDesktopUrl(
     console.error("Failed to open desktop for sandbox", sandboxId, error)
     return { ok: false, error: "Couldn't start the desktop. Try again." }
   }
+}
+
+/**
+ * Sent periodically while the desktop is open: watching it keeps the sandbox
+ * running, so it's metered like any other use. A failure means disconnect.
+ */
+export async function pingChatDesktop(
+  chatId: string
+): Promise<DesktopResult<object>> {
+  return openChatDesktop(chatId)
 }

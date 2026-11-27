@@ -3,6 +3,8 @@ import "server-only"
 import { Daytona } from "@daytona/sdk"
 import { DaytonaNotFoundError } from "@daytona/sdk/v0"
 
+import { SANDBOX_AUTO_STOP_MINUTES } from "@/lib/billing"
+
 // This project's Daytona organization is on Daytona v0 (app.daytona.io), so
 // every call goes through the `v0` namespace. Reads DAYTONA_API_KEY from env.
 const daytona = new Daytona()
@@ -24,6 +26,8 @@ export async function createBotSandbox(bot: {
 }): Promise<string> {
   const sandbox = await daytona.v0.create({
     labels: { botId: bot.id, userId: bot.userId },
+    // Sandbox time is metered on this assumption (lib/usage.ts).
+    autoStopInterval: SANDBOX_AUTO_STOP_MINUTES,
   })
 
   try {

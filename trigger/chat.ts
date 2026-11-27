@@ -4,6 +4,8 @@ import {
   hasToolCall,
   stepCountIs,
   type InferUITools,
+  type StopCondition,
+  type ToolSet,
   type UIDataTypes,
   type UIMessage,
 } from "ai"
@@ -12,6 +14,13 @@ import { z } from "zod"
 
 import { db } from "@/db"
 import { chatMembers, chats, type bots } from "@/db/schema"
+import {
+  aiCostMicros,
+  getUsage,
+  meterSandboxUse,
+  recordAiUsage,
+  UsageLimitError,
+} from "@/lib/usage"
 import { createHandoffTool, type HandoffTool } from "./handoff-tool"
 import {
   MEMORY_PATH,
@@ -36,6 +45,7 @@ type Bot = Pick<
 >
 
 type ChatInfo = {
+  userId: string
   kind: (typeof chats.$inferSelect)["kind"]
   name: string | null
   bots: Bot[]
@@ -50,7 +60,7 @@ const toolsBySandbox = new Map<string, SandboxTools>()
 async function getChatInfo(chatId: string): Promise<ChatInfo> {
   const row = await db.query.chats.findFirst({
     where: eq(chats.id, chatId),
-    columns: { kind: true, name: true },
+    columns: { userId: true, kind: true, name: true },
     with: {
       members: {
         orderBy: asc(chatMembers.joinedAt),
@@ -73,6 +83,7 @@ async function getChatInfo(chatId: string): Promise<ChatInfo> {
     throw new Error(`No bots found for chat ${chatId}`)
   }
   return {
+    userId: row.userId,
     kind: row.kind,
     name: row.name,
     bots: row.members.map((member) => member.bot),
@@ -89,10 +100,15 @@ async function getTurnBot(chatId: string, botId: string | undefined) {
   return { info, bot }
 }
 
+/** Checks and charges the bot owner's sandbox time before each use. */
+function sandboxGuard(bot: Bot) {
+  return () => meterSandboxUse(bot.id)
+}
+
 function getSandboxTools(bot: Bot) {
   let tools = toolsBySandbox.get(bot.sandboxId)
   if (!tools) {
-    tools = createSandboxTools(bot.sandboxId)
+    tools = createSandboxTools(bot.sandboxId, sandboxGuard(bot))
     toolsBySandbox.set(bot.sandboxId, tools)
   }
   return tools
@@ -174,6 +190,13 @@ function memoryInstructions(isGroup: boolean, memory: string | null) {
     .join("\n")
 }
 
+/** True once the turn's model calls cost `budgetMicros` or more. */
+function budgetSpent(budgetMicros: number): StopCondition<ToolSet> {
+  return ({ steps }) =>
+    steps.reduce((total, step) => total + aiCostMicros(step.usage), 0) >=
+    budgetMicros
+}
+
 export const chatAgent = chat.withUIMessage<ChatUIMessage>().agent({
   id: "chat",
   // Platform snapshot storage, keyed by chatId.
@@ -194,12 +217,22 @@ export const chatAgent = chat.withUIMessage<ChatUIMessage>().agent({
   run: async ({ chatId, clientData, messages, tools, signal, streamText }) => {
     // The prompt and the reply's author depend on the bot picked this turn.
     const { info, bot } = await getTurnBot(chatId, clientData?.botId)
+
+    // The owner's plan pays for the turn. A thrown error ends the turn with
+    // its message shown in the chat UI (components/chat-view.tsx).
+    const usage = await getUsage(info.userId)
+    if (!usage) throw new UsageLimitError("plan")
+    const aiBudget = usage.ai.limit - usage.ai.used
+    if (aiBudget <= 0) throw new UsageLimitError("ai")
+
     // Loaded every turn rather than left to the model to read: a bot that
     // only "should" check its memory often doesn't.
-    const memory = await readMemory(bot.sandboxId).catch((error) => {
-      console.error("Failed to read memory for sandbox", bot.sandboxId, error)
-      return null
-    })
+    const memory = await readMemory(bot.sandboxId, sandboxGuard(bot)).catch(
+      (error) => {
+        console.error("Failed to read memory for sandbox", bot.sandboxId, error)
+        return null
+      }
+    )
     chat.prompt.set(systemPrompt(bot, info, memory))
     chat.setUIMessageStreamOptions({
       messageMetadata: () => ({ botId: bot.id }),
@@ -211,7 +244,24 @@ export const chatAgent = chat.withUIMessage<ChatUIMessage>().agent({
       tools,
       abortSignal: signal,
       // A handoff ends the turn: the teammate answers in the next one.
-      stopWhen: [stepCountIs(50), hasToolCall("handoff")],
+      stopWhen: [
+        stepCountIs(50),
+        hasToolCall("handoff"),
+        // Stop between steps once the turn has spent what's left of the
+        // period's AI credits; the next turn is then refused.
+        budgetSpent(aiBudget),
+      ],
+      // Charged per model call, so stopped and failed turns still count.
+      onStepEnd: async (step) => {
+        await recordAiUsage({
+          userId: info.userId,
+          botId: bot.id,
+          chatId,
+          usage: step.usage,
+        }).catch((error) =>
+          console.error("Failed to record AI usage", chatId, error)
+        )
+      },
     })
   },
 })

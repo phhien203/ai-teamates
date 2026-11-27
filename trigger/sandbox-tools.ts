@@ -19,14 +19,21 @@ function truncate(text: string) {
 }
 
 /**
+ * Runs before every use of a sandbox. Throws to refuse the use (e.g. when the
+ * user is out of sandbox time); the error reaches the model as a tool error.
+ */
+export type SandboxGuard = () => Promise<void>
+
+/**
  * Lazily connects to a bot's sandbox, starting it (and its desktop) only when
  * a tool first needs it. v0 sandboxes auto-stop when idle.
  */
-function sandboxConnection(sandboxId: string) {
+function sandboxConnection(sandboxId: string, guard: SandboxGuard) {
   let sandbox: Promise<Sandbox> | undefined
   let desktop: Promise<unknown> | undefined
 
-  function get() {
+  async function get() {
+    await guard()
     sandbox ??= (async () => {
       const s = await daytona.v0.get(sandboxId)
       if (s.state !== "started") await s.start()
@@ -88,10 +95,11 @@ const point = {
 // One connection per sandbox per worker, shared by its tools and memory reads.
 const connections = new Map<string, ReturnType<typeof sandboxConnection>>()
 
-function connectionFor(sandboxId: string) {
+// A sandbox belongs to one bot, so its guard is the same on every call.
+function connectionFor(sandboxId: string, guard: SandboxGuard) {
   let conn = connections.get(sandboxId)
   if (!conn) {
-    conn = sandboxConnection(sandboxId)
+    conn = sandboxConnection(sandboxId, guard)
     connections.set(sandboxId, conn)
   }
   return conn
@@ -108,12 +116,12 @@ async function readMemoryFile(sandbox: Sandbox) {
 }
 
 /** The bot's memory file, starting its sandbox if needed. */
-export async function readMemory(sandboxId: string) {
-  return readMemoryFile(await connectionFor(sandboxId).get())
+export async function readMemory(sandboxId: string, guard: SandboxGuard) {
+  return readMemoryFile(await connectionFor(sandboxId, guard).get())
 }
 
-export function createSandboxTools(sandboxId: string) {
-  const conn = connectionFor(sandboxId)
+export function createSandboxTools(sandboxId: string, guard: SandboxGuard) {
+  const conn = connectionFor(sandboxId, guard)
 
   return {
     getMemory: tool({

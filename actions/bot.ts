@@ -18,14 +18,18 @@ import {
   FEATURES,
   hasFeatures,
   UPGRADE_REQUIRED,
+  usageLimitReached,
   type UpgradeRequired,
+  type UsageLimitReached,
 } from "@/lib/billing"
+import { checkAllowance } from "@/lib/usage"
 import { createBotSandbox, deleteBotSandbox } from "@/lib/daytona"
 
 export type CreateBotResult =
   | { ok: true; id: string }
   | { ok: false; error: string; fieldErrors?: Record<string, string[]> }
   | UpgradeRequired
+  | UsageLimitReached
 
 export async function createBot(input: InsertBot): Promise<CreateBotResult> {
   const { isAuthenticated, userId, has } = await auth()
@@ -34,6 +38,10 @@ export async function createBot(input: InsertBot): Promise<CreateBotResult> {
   if (!hasFeatures(has, FEATURES.bots, FEATURES.sandboxes)) {
     return UPGRADE_REQUIRED
   }
+  // Each bot holds a sandbox, which costs disk even when stopped.
+  const blocked = await checkAllowance(userId, "bots", "sandbox")
+  if (blocked === "plan") return UPGRADE_REQUIRED
+  if (blocked) return usageLimitReached(blocked)
 
   const parsed = insertBotSchema.safeParse(input)
   if (!parsed.success) {
