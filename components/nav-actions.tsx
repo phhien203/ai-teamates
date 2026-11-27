@@ -4,6 +4,7 @@ import * as React from "react"
 import { PlusIcon, UsersIcon } from "lucide-react"
 
 import { BotDialog } from "@/components/bot-dialog"
+import { GroupChatDialog } from "@/components/group-chat-dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,9 +16,15 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import type { BotSummary } from "@/queries/bots"
 
-export function NavActions() {
+export function NavActions({
+  botsPromise,
+}: {
+  botsPromise: Promise<BotSummary[]>
+}) {
   const [botDialogOpen, setBotDialogOpen] = React.useState(false)
+  const [groupDialogOpen, setGroupDialogOpen] = React.useState(false)
 
   return (
     <SidebarMenu>
@@ -39,13 +46,18 @@ export function NavActions() {
               <PlusIcon />
               Create new bot
             </DropdownMenuItem>
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setGroupDialogOpen(true)}>
               <UsersIcon />
               Create group chat
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         <BotDialog open={botDialogOpen} onOpenChange={setBotDialogOpen} />
+        <GroupChatDialog
+          botsPromise={botsPromise}
+          open={groupDialogOpen}
+          onOpenChange={setGroupDialogOpen}
+        />
       </SidebarMenuItem>
     </SidebarMenu>
   )

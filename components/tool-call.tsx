@@ -1,6 +1,6 @@
 "use client"
 
-import { EyeIcon } from "lucide-react"
+import { ArrowRightLeftIcon, EyeIcon } from "lucide-react"
 import type { BundledLanguage } from "shiki"
 
 import { CodeBlock } from "@/components/ai-elements/code-block"
@@ -138,12 +138,36 @@ function Details({ part }: { part: ToolPart }) {
 }
 
 export function ToolCall({ part }: { part: ToolPart }) {
+  // A handoff to a teammate in a group chat: a status line, not a tool card.
+  if (part.type === "tool-handoff") {
+    const done = part.state === "output-available"
+    const failed = part.state === "output-error"
+    return (
+      <div className="flex items-start gap-2 text-sm text-muted-foreground">
+        <ArrowRightLeftIcon className="mt-0.5 size-4 shrink-0" />
+        {done ? (
+          <span>
+            Handed off to{" "}
+            <span className="font-medium text-foreground">
+              {part.output.name}
+            </span>
+            {part.output.reason && `: ${part.output.reason}`}
+          </span>
+        ) : failed ? (
+          "Couldn't hand off"
+        ) : (
+          <Shimmer>Handing off</Shimmer>
+        )}
+      </div>
+    )
+  }
+
   // The bot's own look at the screen: a status line only, never the image.
   if (part.type === "tool-viewScreen") {
     const done = part.state === "output-available"
     const failed = part.state === "output-error"
     return (
-      <div className="flex items-center gap-2 text-muted-foreground text-sm">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <EyeIcon className="size-4" />
         {done ? (
           "Looked at the screen"

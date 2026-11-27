@@ -7,10 +7,19 @@ import {
   defaultStorage,
   type ChatStartSessionParams,
 } from "@trigger.dev/sdk/ai"
-import { and, asc, eq } from "drizzle-orm"
+import { and, asc, eq, inArray } from "drizzle-orm"
+import { revalidatePath } from "next/cache"
+import { nanoid } from "nanoid"
+import { z } from "zod"
 
 import { db } from "@/db"
-import { chatMembers, chats } from "@/db/schema"
+import {
+  bots,
+  chatMembers,
+  chats,
+  insertGroupChatSchema,
+  type InsertGroupChat,
+} from "@/db/schema"
 import { getBotDesktopUrl } from "@/lib/daytona"
 import type { LoadTranscriptResult } from "@trigger.dev/sdk/chat/react"
 import type { ChatUIMessage, chatAgent } from "@/trigger/chat"
@@ -28,6 +37,58 @@ async function assertChatOwner(chatId: string) {
     columns: { id: true },
   })
   if (!chat) throw new Error("Chat not found")
+}
+
+export type CreateGroupChatResult =
+  | { ok: true; id: string }
+  | { ok: false; error: string; fieldErrors?: Record<string, string[]> }
+
+export async function createGroupChat(
+  input: InsertGroupChat
+): Promise<CreateGroupChatResult> {
+  const { isAuthenticated, userId } = await auth()
+  if (!isAuthenticated) return { ok: false, error: "You must be signed in." }
+
+  const parsed = insertGroupChatSchema.safeParse(input)
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Please fix the highlighted fields.",
+      fieldErrors: z.flattenError(parsed.error).fieldErrors,
+    }
+  }
+
+  const botIds = [...new Set(parsed.data.botIds)]
+  const owned = await db
+    .select({ id: bots.id })
+    .from(bots)
+    .where(and(eq(bots.userId, userId), inArray(bots.id, botIds)))
+  if (owned.length !== botIds.length) {
+    return {
+      ok: false,
+      error: "Some of those bots no longer exist.",
+      fieldErrors: { botIds: ["Pick bots from your list."] },
+    }
+  }
+
+  const chatId = nanoid()
+  // Members are ordered by joinedAt, so stagger it to keep the picked order.
+  const now = Date.now()
+  await db.batch([
+    db
+      .insert(chats)
+      .values({ id: chatId, userId, kind: "group", name: parsed.data.name }),
+    db.insert(chatMembers).values(
+      botIds.map((botId, i) => ({
+        chatId,
+        botId,
+        joinedAt: new Date(now + i),
+      }))
+    ),
+  ])
+
+  revalidatePath("/", "layout")
+  return { ok: true, id: chatId }
 }
 
 export async function startChatSession(

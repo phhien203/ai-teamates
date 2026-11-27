@@ -8,9 +8,8 @@ import { db } from "@/db"
 import { chatMembers, chats } from "@/db/schema"
 
 /**
- * One of the signed-in user's chats with the bot it shows, or `null` when it
- * doesn't exist or belongs to someone else. Group chats fall back to their
- * first member until they get their own face.
+ * One of the signed-in user's chats with its bots in the order they joined,
+ * or `null` when it doesn't exist or belongs to someone else.
  */
 export const getChat = cache(async (chatId: string) => {
   const { isAuthenticated, userId } = await auth()
@@ -22,7 +21,6 @@ export const getChat = cache(async (chatId: string) => {
     with: {
       members: {
         orderBy: asc(chatMembers.joinedAt),
-        limit: 1,
         columns: {},
         with: {
           bot: {
@@ -39,10 +37,14 @@ export const getChat = cache(async (chatId: string) => {
     },
   })
 
-  const bot = row?.members[0]?.bot
-  if (!row || !bot) return null
+  if (!row || row.members.length === 0) return null
 
-  return { id: row.id, kind: row.kind, name: row.name, bot }
+  return {
+    id: row.id,
+    kind: row.kind,
+    name: row.name,
+    bots: row.members.map((member) => member.bot),
+  }
 })
 
 export type Chat = NonNullable<Awaited<ReturnType<typeof getChat>>>

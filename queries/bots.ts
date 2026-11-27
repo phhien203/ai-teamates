@@ -5,13 +5,27 @@ import { auth } from "@clerk/nextjs/server"
 import { asc, desc, eq } from "drizzle-orm"
 
 import { db } from "@/db"
-import { chatMembers, chats } from "@/db/schema"
+import { bots, chatMembers, chats } from "@/db/schema"
+
+/** The signed-in user's bots, oldest first. */
+export const getBots = cache(async () => {
+  const { isAuthenticated, userId } = await auth()
+  if (!isAuthenticated) return []
+
+  return db.query.bots.findMany({
+    where: eq(bots.userId, userId),
+    orderBy: asc(bots.createdAt),
+    columns: { id: true, name: true, avatar: true },
+  })
+})
+
+export type BotSummary = Awaited<ReturnType<typeof getBots>>[number]
 
 /**
- * The signed-in user's chats, most recent first, each with the bot it shows.
- * Group chats fall back to their first member until they get their own face.
+ * The signed-in user's chats, most recent first, each with its bots in the
+ * order they joined. Direct chats have exactly one.
  */
-export const getChatsWithBot = cache(async () => {
+export const getChatsWithBots = cache(async () => {
   const { isAuthenticated, userId } = await auth()
   if (!isAuthenticated) return []
 
@@ -20,6 +34,7 @@ export const getChatsWithBot = cache(async () => {
     orderBy: desc(chats.lastMessageAt),
     columns: {
       id: true,
+      kind: true,
       name: true,
       lastMessagePreview: true,
       lastMessageAt: true,
@@ -27,7 +42,6 @@ export const getChatsWithBot = cache(async () => {
     with: {
       members: {
         orderBy: asc(chatMembers.joinedAt),
-        limit: 1,
         columns: {},
         with: {
           bot: { columns: { id: true, name: true, avatar: true } },
@@ -36,10 +50,11 @@ export const getChatsWithBot = cache(async () => {
     },
   })
 
-  return rows.flatMap(({ members, ...chat }) => {
-    const bot = members[0]?.bot
-    return bot ? [{ ...chat, bot }] : []
-  })
+  return rows.flatMap(({ members, ...chat }) =>
+    members.length > 0
+      ? [{ ...chat, bots: members.map((member) => member.bot) }]
+      : []
+  )
 })
 
-export type ChatWithBot = Awaited<ReturnType<typeof getChatsWithBot>>[number]
+export type ChatWithBots = Awaited<ReturnType<typeof getChatsWithBots>>[number]

@@ -1,6 +1,6 @@
 import { formatDistanceToNowStrict } from "date-fns"
 
-import { ChatAvatar } from "@/components/chat-avatar"
+import { GroupChatAvatar } from "@/components/group-chat-avatar"
 import { NavChatButton } from "@/components/nav-chat-button"
 import {
   SidebarGroup,
@@ -9,10 +9,10 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { Skeleton } from "@/components/ui/skeleton"
-import { getChatsWithBot } from "@/queries/bots"
+import { getChatsWithBots } from "@/queries/bots"
 
 export async function NavChats() {
-  const chats = await getChatsWithBot()
+  const chats = await getChatsWithBots()
 
   return (
     <SidebarGroup>
@@ -23,13 +23,13 @@ export async function NavChats() {
               <NavChatButton
                 chatId={chat.id}
                 size="lg"
-                tooltip={chat.name ?? chat.bot.name}
+                tooltip={chat.name ?? chat.bots[0].name}
               >
-                <ChatAvatar seed={chat.bot.avatar} />
+                <GroupChatAvatar bots={chat.bots} />
                 <div className="flex min-w-0 flex-1 flex-col">
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="truncate font-medium">
-                      {chat.name ?? chat.bot.name}
+                      {chat.name ?? chat.bots[0].name}
                     </span>
                     <time
                       dateTime={chat.lastMessageAt.toISOString()}

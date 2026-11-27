@@ -4,7 +4,7 @@ import * as React from "react"
 import { useRouter } from "next/navigation"
 import { SearchIcon } from "lucide-react"
 
-import { ChatAvatar } from "@/components/chat-avatar"
+import { GroupChatAvatar } from "@/components/group-chat-avatar"
 import { Button } from "@/components/ui/button"
 import {
   Command,
@@ -21,10 +21,10 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import type { ChatWithBot } from "@/queries/bots"
+import type { ChatWithBots } from "@/queries/bots"
 
 type NavSearchProps = {
-  chatsPromise: Promise<ChatWithBot[]>
+  chatsPromise: Promise<ChatWithBots[]>
 }
 
 export function NavSearch({ chatsPromise }: NavSearchProps) {
@@ -100,16 +100,16 @@ function ChatResults({
         <CommandItem
           key={chat.id}
           value={chat.id}
-          keywords={[chat.name ?? chat.bot.name]}
+          keywords={[chat.name ?? chat.bots[0].name]}
           onSelect={() => {
             onSelect()
             router.push(`/chats/${chat.id}`)
           }}
         >
-          <ChatAvatar seed={chat.bot.avatar} />
+          <GroupChatAvatar bots={chat.bots} />
           <div className="flex min-w-0 flex-1 flex-col">
             <span className="truncate font-medium">
-              {chat.name ?? chat.bot.name}
+              {chat.name ?? chat.bots[0].name}
             </span>
             {chat.lastMessagePreview && (
               <span className="truncate text-xs text-muted-foreground">

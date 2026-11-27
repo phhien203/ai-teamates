@@ -1,4 +1,4 @@
-import { relations } from "drizzle-orm";
+import { relations } from "drizzle-orm"
 import {
   index,
   pgEnum,
@@ -6,10 +6,10 @@ import {
   primaryKey,
   text,
   timestamp,
-} from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import type { z } from "zod";
-import { nanoid } from "nanoid";
+} from "drizzle-orm/pg-core"
+import { createInsertSchema } from "drizzle-zod"
+import { z } from "zod"
+import { nanoid } from "nanoid"
 
 export const bots = pgTable(
   "bots",
@@ -29,19 +29,19 @@ export const bots = pgTable(
       .defaultNow()
       .notNull(),
   },
-  (t) => [index("bots_user_id_idx").on(t.userId)],
-);
+  (t) => [index("bots_user_id_idx").on(t.userId)]
+)
 
 export const insertBotSchema = createInsertSchema(bots, {
   name: (s) => s.trim().min(1, "Give your bot a name.").max(50),
   avatar: (s) => s.min(1),
   job: (s) => s.trim().min(1, "Describe the bot's job.").max(100),
   instructions: (s) => s.trim().max(2000),
-}).omit({ id: true, userId: true, sandboxId: true, createdAt: true });
+}).omit({ id: true, userId: true, sandboxId: true, createdAt: true })
 
-export type InsertBot = z.infer<typeof insertBotSchema>;
+export type InsertBot = z.infer<typeof insertBotSchema>
 
-export const chatKind = pgEnum("chat_kind", ["direct", "group"]);
+export const chatKind = pgEnum("chat_kind", ["direct", "group"])
 
 export const chats = pgTable(
   "chats",
@@ -60,8 +60,8 @@ export const chats = pgTable(
       .defaultNow()
       .notNull(),
   },
-  (t) => [index("chats_user_id_idx").on(t.userId)],
-);
+  (t) => [index("chats_user_id_idx").on(t.userId)]
+)
 
 export const chatMembers = pgTable(
   "chat_members",
@@ -79,18 +79,30 @@ export const chatMembers = pgTable(
   (t) => [
     primaryKey({ columns: [t.chatId, t.botId] }),
     index("chat_members_bot_id_idx").on(t.botId),
-  ],
-);
+  ]
+)
 
 export const botsRelations = relations(bots, ({ many }) => ({
   memberships: many(chatMembers),
-}));
+}))
 
 export const chatsRelations = relations(chats, ({ many }) => ({
   members: many(chatMembers),
-}));
+}))
 
 export const chatMembersRelations = relations(chatMembers, ({ one }) => ({
   chat: one(chats, { fields: [chatMembers.chatId], references: [chats.id] }),
   bot: one(bots, { fields: [chatMembers.botId], references: [bots.id] }),
-}));
+}))
+
+// `name` is nullable on the table (direct chats use the bot's name), so it's
+// overridden with a schema rather than refined: groups always have a name.
+export const insertGroupChatSchema = createInsertSchema(chats, {
+  name: z.string().trim().min(1, "Give the group a name.").max(50),
+})
+  .pick({ name: true })
+  .extend({
+    botIds: z.array(z.string()).min(2, "Pick at least two bots."),
+  })
+
+export type InsertGroupChat = z.infer<typeof insertGroupChatSchema>
