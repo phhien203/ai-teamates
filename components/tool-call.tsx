@@ -48,6 +48,10 @@ function languageFor(path: string): BundledLanguage {
 
 function describe(part: ToolPart): string {
   switch (part.type) {
+    case "tool-getMemory":
+      return "Check memory"
+    case "tool-setMemory":
+      return "Update memory"
     case "tool-bash":
       return part.input?.command ? `$ ${part.input.command}` : "Run command"
     case "tool-readFile":

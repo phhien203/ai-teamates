@@ -7,7 +7,17 @@ import { DaytonaNotFoundError } from "@daytona/sdk/v0"
 // every call goes through the `v0` namespace. Reads DAYTONA_API_KEY from env.
 const daytona = new Daytona()
 
-/** Creates the sandbox that belongs to a bot and returns its ID. */
+/**
+ * The bot's long-term memory, in its home directory. It's the only thing that
+ * carries over between the bot's chats (its 1:1 chat and any group chats).
+ * Keep in sync with the system prompt in trigger/chat.ts.
+ */
+export const BOT_MEMORY_PATH = "/home/daytona/MEMORY.md"
+
+/**
+ * Creates the sandbox that belongs to a bot, with a blank memory file, and
+ * returns its ID.
+ */
 export async function createBotSandbox(bot: {
   id: string
   userId: string
@@ -15,6 +25,19 @@ export async function createBotSandbox(bot: {
   const sandbox = await daytona.v0.create({
     labels: { botId: bot.id, userId: bot.userId },
   })
+
+  try {
+    await sandbox.fs.uploadFile(Buffer.from(""), BOT_MEMORY_PATH)
+  } catch (error) {
+    // A sandbox without its memory file isn't ready: don't leave it behind.
+    await daytona.v0
+      .delete(sandbox)
+      .catch((cleanupError) =>
+        console.error("Failed to clean up sandbox", sandbox.id, cleanupError)
+      )
+    throw error
+  }
+
   return sandbox.id
 }
 

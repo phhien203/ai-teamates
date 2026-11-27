@@ -13,7 +13,12 @@ import { z } from "zod"
 import { db } from "@/db"
 import { chatMembers, chats, type bots } from "@/db/schema"
 import { createHandoffTool, type HandoffTool } from "./handoff-tool"
-import { createSandboxTools, type SandboxTools } from "./sandbox-tools"
+import {
+  MEMORY_PATH,
+  createSandboxTools,
+  readMemory,
+  type SandboxTools,
+} from "./sandbox-tools"
 
 /** Assistant messages carry the bot that wrote them. */
 export type ChatMessageMetadata = { botId?: string }
@@ -111,7 +116,7 @@ function getTools(bot: Bot, info: ChatInfo) {
   return { ...sandboxTools, handoff: createHandoffTool(teammates) }
 }
 
-function systemPrompt(bot: Bot, info: ChatInfo) {
+function systemPrompt(bot: Bot, info: ChatInfo, memory: string | null) {
   const isGroup = info.kind === "group"
   const teammates = info.bots.filter((b) => b.id !== bot.id)
 
@@ -150,9 +155,34 @@ function systemPrompt(bot: Bot, info: ChatInfo) {
     ]
       .filter(Boolean)
       .join("\n"),
+    memoryInstructions(isGroup, memory),
   ]
     .filter(Boolean)
     .join("\n\n")
+}
+
+function memoryInstructions(isGroup: boolean, memory: string | null) {
+  return [
+    `Your memory:`,
+    `Each chat you're in (your 1:1 chat with the person you work for, and any group chats) has its own separate history, and you can't see one chat from another. Your memory (${MEMORY_PATH} in your sandbox) is the only thing you carry between them. It's how you remember the person and your work over time.`,
+    memory === null
+      ? `Your memory couldn't be loaded this turn. If the user asks about something you might have saved, call getMemory before answering.`
+      : memory.trim()
+        ? `Here is your memory as of the start of this turn. Treat it as things you know, and use it to answer${isGroup ? `, including about things the user told you in your private 1:1 chat` : ``}:\n<memory>\n${memory.trim()}\n</memory>`
+        : `Your memory is empty so far.`,
+    [
+      `- Check your memory before saying you don't know or don't remember something.`,
+      `- When you learn something worth keeping beyond this conversation, call setMemory in the same turn: facts about the person and their preferences, decisions, ongoing projects and where their files live in your sandbox, and anything the user asks you to remember. Don't save small talk, one-off details, or things you can easily look up again.`,
+      `- setMemory replaces the whole memory, so pass the current memory with your changes applied. Keep it short and organized: markdown bullets under headings, one fact per line, edited in place. Remove entries that turn out to be wrong or outdated, and note where you learned something when it matters (e.g. "said in our 1:1 chat").`,
+      `- Use getMemory and setMemory for your memory, not the file tools. Save quietly as part of your work; don't announce every save.`,
+      isGroup &&
+        `- Your teammates can't read your memory. If something in it would help them, say it in the chat.`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  ]
+    .filter(Boolean)
+    .join("\n")
 }
 
 export const chatAgent = chat.withUIMessage<ChatUIMessage>().agent({
@@ -175,7 +205,13 @@ export const chatAgent = chat.withUIMessage<ChatUIMessage>().agent({
   run: async ({ chatId, clientData, messages, tools, signal, streamText }) => {
     // The prompt and the reply's author depend on the bot picked this turn.
     const { info, bot } = await getTurnBot(chatId, clientData?.botId)
-    chat.prompt.set(systemPrompt(bot, info))
+    // Loaded every turn rather than left to the model to read: a bot that
+    // only "should" check its memory often doesn't.
+    const memory = await readMemory(bot.sandboxId).catch((error) => {
+      console.error("Failed to read memory for sandbox", bot.sandboxId, error)
+      return null
+    })
+    chat.prompt.set(systemPrompt(bot, info, memory))
     chat.setUIMessageStreamOptions({
       messageMetadata: () => ({ botId: bot.id }),
     })

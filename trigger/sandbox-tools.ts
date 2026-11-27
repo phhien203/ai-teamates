@@ -1,5 +1,5 @@
 import { Daytona } from "@daytona/sdk"
-import type { Sandbox } from "@daytona/sdk/v0"
+import { DaytonaNotFoundError, type Sandbox } from "@daytona/sdk/v0"
 import { tool, type ToolSet } from "ai"
 import { z } from "zod"
 
@@ -7,6 +7,9 @@ import { z } from "zod"
 const daytona = new Daytona()
 
 const HOME = "/home/daytona"
+// Created blank with the sandbox (lib/daytona.ts, BOT_MEMORY_PATH).
+export const MEMORY_PATH = `${HOME}/MEMORY.md`
+const MAX_MEMORY_CHARS = 8_000
 const MAX_OUTPUT_CHARS = 20_000
 const COMMAND_TIMEOUT_SECONDS = 120
 
@@ -82,15 +85,70 @@ const point = {
   y: z.number().int().min(0).describe("Y coordinate in pixels"),
 }
 
+// One connection per sandbox per worker, shared by its tools and memory reads.
+const connections = new Map<string, ReturnType<typeof sandboxConnection>>()
+
+function connectionFor(sandboxId: string) {
+  let conn = connections.get(sandboxId)
+  if (!conn) {
+    conn = sandboxConnection(sandboxId)
+    connections.set(sandboxId, conn)
+  }
+  return conn
+}
+
+async function readMemoryFile(sandbox: Sandbox) {
+  try {
+    return (await sandbox.fs.downloadFile(MEMORY_PATH)).toString("utf8")
+  } catch (error) {
+    // Bots created before memory existed have no file yet: that's empty.
+    if (error instanceof DaytonaNotFoundError) return ""
+    throw error
+  }
+}
+
+/** The bot's memory file, starting its sandbox if needed. */
+export async function readMemory(sandboxId: string) {
+  return readMemoryFile(await connectionFor(sandboxId).get())
+}
+
 export function createSandboxTools(sandboxId: string) {
-  const conn = sandboxConnection(sandboxId)
+  const conn = connectionFor(sandboxId)
 
   return {
+    getMemory: tool({
+      description: `Read your memory (${MEMORY_PATH}): what you've saved about the person you work for and your work, from all your chats. It's already in your instructions at the start of each turn; call this to re-read it after it may have changed.`,
+      inputSchema: z.object({}),
+      execute: async () => ({
+        content: await readMemoryFile(await conn.get()),
+      }),
+    }),
+
+    setMemory: tool({
+      description: `Replace your memory (${MEMORY_PATH}) with new contents. It's how you remember things across all your chats, including group chats. This overwrites the whole file, so pass everything you want to keep: the current memory with your additions, edits, and removals applied.`,
+      inputSchema: z.object({
+        content: z
+          .string()
+          .max(MAX_MEMORY_CHARS)
+          .describe(
+            "The complete new memory, in markdown: short bullets under headings."
+          ),
+      }),
+      execute: async ({ content }) => {
+        const sandbox = await conn.get()
+        await sandbox.fs.uploadFile(Buffer.from(content, "utf8"), MEMORY_PATH)
+        return { saved: true }
+      },
+    }),
+
     bash: tool({
       description: `Run a shell command in your sandbox and get its combined stdout/stderr and exit code. Runs in ${HOME} by default. Commands time out after ${COMMAND_TIMEOUT_SECONDS}s, so start long-running or GUI programs in the background (e.g. \`nohup chromium https://example.com >/dev/null 2>&1 &\`). DISPLAY is set, so GUI programs open on the screen.`,
       inputSchema: z.object({
         command: z.string().min(1).describe("The shell command to run"),
-        cwd: z.string().optional().describe(`Working directory (default ${HOME})`),
+        cwd: z
+          .string()
+          .optional()
+          .describe(`Working directory (default ${HOME})`),
       }),
       execute: async ({ command, cwd }) => {
         // The desktop must be up for GUI programs launched from the shell.
@@ -108,7 +166,10 @@ export function createSandboxTools(sandboxId: string) {
     readFile: tool({
       description: "Read a text file from your sandbox.",
       inputSchema: z.object({
-        path: z.string().min(1).describe(`File path, absolute or relative to ${HOME}`),
+        path: z
+          .string()
+          .min(1)
+          .describe(`File path, absolute or relative to ${HOME}`),
       }),
       execute: async ({ path }) => {
         const sandbox = await conn.get()
@@ -121,7 +182,10 @@ export function createSandboxTools(sandboxId: string) {
       description:
         "Create or overwrite a text file in your sandbox. Missing parent directories are created.",
       inputSchema: z.object({
-        path: z.string().min(1).describe(`File path, absolute or relative to ${HOME}`),
+        path: z
+          .string()
+          .min(1)
+          .describe(`File path, absolute or relative to ${HOME}`),
         content: z.string().describe("The full file contents"),
       }),
       execute: async ({ path, content }) => {
@@ -133,7 +197,8 @@ export function createSandboxTools(sandboxId: string) {
     }),
 
     listFiles: tool({
-      description: "List the files and directories in a directory of your sandbox.",
+      description:
+        "List the files and directories in a directory of your sandbox.",
       inputSchema: z.object({
         path: z
           .string()
@@ -214,9 +279,7 @@ export function createSandboxTools(sandboxId: string) {
         "Press a single key, optionally with modifiers (e.g. key 'enter', or key 'l' with modifiers ['ctrl']). Key names: enter, escape, tab, backspace, delete, space, up/down/left/right, home, end, pageup, pagedown, f1–f24, letters, digits, punctuation.",
       inputSchema: z.object({
         key: z.string().min(1),
-        modifiers: z
-          .array(z.enum(["ctrl", "alt", "shift", "cmd"]))
-          .default([]),
+        modifiers: z.array(z.enum(["ctrl", "alt", "shift", "cmd"])).default([]),
       }),
       execute: async ({ key, modifiers }) => {
         const sandbox = await conn.getDesktop()
